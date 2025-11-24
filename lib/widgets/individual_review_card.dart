@@ -60,8 +60,9 @@ class _IndividualReviewCardState extends State<IndividualReviewCard> {
 
     final likes = (data['likesCount'] ?? 0) as int;
 
-    final String? mediaUrl = data['mediaUrl'] as String?;
-    final bool hasMedia = mediaUrl != null && mediaUrl.isNotEmpty;
+    final List<dynamic> imageUrlsDyn = data['imageUrls'] as List<dynamic>? ?? const [];
+    final String? videoUrl = data['videoUrl'] as String?;
+    final bool hasMedia = imageUrlsDyn.isNotEmpty || (videoUrl != null && videoUrl.isNotEmpty);
 
 
     return InkWell(

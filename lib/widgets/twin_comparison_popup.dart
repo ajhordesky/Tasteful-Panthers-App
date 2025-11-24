@@ -44,32 +44,45 @@ class TwinComparisonPopup extends StatelessWidget {
             ),
           ],
           rows: rows.map((row) {
+            final bool isSimilarityRow = row.foodName.startsWith('Twin Similarity Scores');
             return DataRow(
               color: row.highlight
                   ? WidgetStateProperty.all(Colors.yellow[100])
-                  : null,
+                  : isSimilarityRow
+                      ? WidgetStateProperty.all(Colors.blue[50])
+                      : null,
               cells: [
                 DataCell(
                   Tooltip(
                     message: row.foodName,
                     child: Text(
                       truncateMeal(row.foodName),
-                      style: const TextStyle(fontSize: 11),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSimilarityRow ? FontWeight.bold : FontWeight.normal,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
                 DataCell(
                   Text(
-                    row.meDisplay,
-                    style: const TextStyle(fontSize: 11),
+                    row.highlight ? '(?)' : row.meDisplay,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontStyle: row.highlight ? FontStyle.italic : FontStyle.normal,
+                      fontWeight: isSimilarityRow ? FontWeight.bold : FontWeight.normal,
+                    ),
                   ),
                 ),
                 ...twinIds.map(
                   (id) => DataCell(
                     Text(
                       row.twinRatings[id] ?? "-",
-                      style: const TextStyle(fontSize: 11),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSimilarityRow ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
                   ),
                 ),

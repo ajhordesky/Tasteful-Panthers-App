@@ -68,61 +68,82 @@ class TastefulTwinService {
     return snapshot.docs.map((doc) => Review.fromFirestore(doc)).toList();
   }
 
-  /// Calculates cosine similarity between the target user
-/// and all other users based on overlapping meal ratings.
-Map<String, double> _calculateSimilarity(
-  String targetUserId,
-  List<Review> targetReviews,
-  List<Review> allReviews,
-) {
-  // Map of target user's ratings by meal name
-  final targetMap = {for (var r in targetReviews) r.meal: r.rating.toDouble()};
+    /// Calculates similarity between target user and others using
+    /// a weighted Pearson correlation with optional Jaccard overlap multiplier.
+    /// - Mean-center ratings to remove user bias (users who rate generally higher/lower).
+    /// - Require a minimum number of common meals to consider (minCommon = 3).
+    /// - Apply shrinkage: similarity *= (nCommon / (nCommon + shrinkK)) to penalize tiny overlaps.
+    /// - Multiply by Jaccard overlap = nCommon / unionSize for further distinctness weighting.
+    Map<String, double> _calculateSimilarity(
+      String targetUserId,
+      List<Review> targetReviews,
+      List<Review> allReviews,
+    ) {
+      const int minCommon = 3; // ignore pairs with fewer overlaps
+      const double shrinkK = 5; // shrinkage parameter
 
-  // Group all reviews by userId
-  final userGroups = <String, List<Review>>{};
-  for (var r in allReviews) {
-    userGroups.putIfAbsent(r.userId, () => []).add(r);
-  }
+      // Group reviews by user
+      final userGroups = <String, List<Review>>{};
+      for (var r in allReviews) {
+        userGroups.putIfAbsent(r.userId, () => []).add(r);
+      }
 
-  final scores = <String, double>{};
+      final targetGroup = userGroups[targetUserId] ?? [];
+      if (targetGroup.isEmpty) return {};
 
-  for (var entry in userGroups.entries) {
-    if (entry.key == targetUserId) continue;
+      // Map of target ratings and mean
+      final targetRatings = {for (var r in targetGroup) r.meal: r.rating.toDouble()};
+      final targetMean = targetRatings.values.isEmpty
+          ? 0
+          : targetRatings.values.reduce((a, b) => a + b) / targetRatings.length;
 
-    // Map of another user's ratings
-    final otherMap = {for (var r in entry.value) r.meal: r.rating.toDouble()};
+      final scores = <String, double>{};
 
-    // Find meals both users have rated
-    final commonMeals = targetMap.keys.toSet().intersection(otherMap.keys.toSet());
-    if (commonMeals.isEmpty) continue;
+      for (final entry in userGroups.entries) {
+        final otherUserId = entry.key;
+        if (otherUserId == targetUserId) continue;
+        final otherReviews = entry.value;
+        final otherRatings = {for (var r in otherReviews) r.meal: r.rating.toDouble()};
+        final otherMean = otherRatings.values.isEmpty
+            ? 0
+            : otherRatings.values.reduce((a, b) => a + b) / otherRatings.length;
 
-    // Compute cosine similarity
-    final dotProduct = commonMeals
-        .map((id) => targetMap[id]! * otherMap[id]!)
-        .reduce((a, b) => a + b);
+        final commonMeals = targetRatings.keys.toSet().intersection(otherRatings.keys.toSet());
+        final nCommon = commonMeals.length;
+        if (nCommon < minCommon) continue;
 
-    final targetMagnitude = _magnitude(targetMap, commonMeals);
-    final otherMagnitude = _magnitude(otherMap, commonMeals);
+        double num = 0; // numerator for Pearson
+        double denomTarget = 0;
+        double denomOther = 0;
+        for (final meal in commonMeals) {
+          final tDev = targetRatings[meal]! - targetMean;
+          final oDev = otherRatings[meal]! - otherMean;
+          num += tDev * oDev;
+          denomTarget += tDev * tDev;
+          denomOther += oDev * oDev;
+        }
 
-    // Skip if either vector has zero magnitude (all ratings zero)
-    if (targetMagnitude == 0 || otherMagnitude == 0) {
-      continue;
+        if (denomTarget == 0 || denomOther == 0) continue; // all same ratings -> undefined correlation
+        double pearson = num / (sqrt(denomTarget) * sqrt(denomOther));
+        if (pearson.isNaN || pearson.isInfinite) continue;
+
+        // Shrinkage factor: reduces impact of small nCommon
+        final shrinkFactor = nCommon / (nCommon + shrinkK);
+
+        // Jaccard overlap factor
+        final unionSize = targetRatings.keys.toSet().union(otherRatings.keys.toSet()).length;
+        final jaccard = unionSize == 0 ? 0 : nCommon / unionSize;
+
+        double similarity = pearson * shrinkFactor * jaccard;
+        if (!similarity.isNaN && !similarity.isInfinite) {
+          scores[otherUserId] = similarity;
+        }
+      }
+
+      return scores;
     }
-
-    final similarity = dotProduct / (targetMagnitude * otherMagnitude);
-    if (!similarity.isNaN && !similarity.isInfinite) {
-      scores[entry.key] = similarity;
-    }
-  }
-
-  return scores;
-}
 
   /// Helper to compute vector magnitude for cosine similarity
-  double _magnitude(Map<String, double> ratings, Set<String> keys) {
-    final sumSquares = keys.map((id) => pow(ratings[id]!, 2)).reduce((a, b) => a + b);
-    return sqrt(sumSquares);
-  }
 
   Future<List<String>> getTopFoodsFromTwins(String userId) async {
     final rows = await getTwinComparisonTable(userId);
@@ -180,7 +201,7 @@ Map<String, double> _calculateSimilarity(
         .where((e) => e.key != userId)
         .toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    final twinIds = topTwins.skip(1).take(3).map((e) => e.key).toList();
+    final twinIds = topTwins.take(3).map((e) => e.key).toList();
 
     // group reviews by user
     final userGroups = <String, List<Review>>{};
@@ -201,48 +222,53 @@ Map<String, double> _calculateSimilarity(
     final todaysMealNames = todaysMeals.map((m) => m.name.trim().toLowerCase()).toSet();
 
     final rows = <TwinComparisonRow>[];
+    // --- First up to 3 highlighted recommendation rows: distinct meals twins rated highly today that user has NOT rated ---
+    final reviewedMealNamesLower = userReviews.map((r) => r.meal.trim().toLowerCase()).toSet();
+    final addedHighlightMealsLower = <String>{};
 
-    // --- First 3 rows: each twin’s best food from today's menu ---
     for (var twinId in twinIds) {
+      if (addedHighlightMealsLower.length >= 3) break; // limit to 3
       final twinReviews = userGroups[twinId] ?? [];
       final todaysTwinReviews = twinReviews
           .where((r) => todaysMealNames.contains(r.meal.trim().toLowerCase()))
           .toList();
+      if (todaysTwinReviews.isEmpty) continue;
 
-      if (todaysTwinReviews.isNotEmpty) {
-        final bestReview = todaysTwinReviews.reduce((a, b) => a.rating >= b.rating ? a : b);
-        final meRatingForBest = userReviews.firstWhere(
-          (r) => r.meal == bestReview.meal,
-          orElse: () => Review(
-            id: '',
-            userId: userId,
-            meal: bestReview.meal,
-            rating: -1,
-            reviewText: '',
-            timestamp: DateTime.now(),
-          ),
-        ).rating;
-        rows.add(TwinComparisonRow(
-          foodName: bestReview.meal,
-          meDisplay: meRatingForBest >= 0 ? meRatingForBest.toString() : "-",
-          twinRatings: {
-            for (var id in twinIds)
-              id: (userGroups[id]?.firstWhere(
-                        (r) => r.meal == bestReview.meal,
-                        orElse: () => Review(
-                          id: '',
-                          userId: id,
-                          meal: bestReview.meal,
-                          rating: 0,
-                          reviewText: '',
-                          timestamp: DateTime.now(),
-                        ),
-                      ).rating)
-                  .toString(),
-          },
-          highlight: true,
-        ));
+      // Pick highest rated today's meal for this twin the user has NOT yet rated and not already added
+      todaysTwinReviews.sort((a, b) => b.rating.compareTo(a.rating));
+      Review? candidate;
+      for (var rev in todaysTwinReviews) {
+        final mealLower = rev.meal.trim().toLowerCase();
+        if (reviewedMealNamesLower.contains(mealLower)) continue; // skip meals user already rated
+        if (addedHighlightMealsLower.contains(mealLower)) continue; // enforce distinct top meals
+        candidate = rev;
+        break;
       }
+      if (candidate == null) continue; // no unseen distinct meal for this twin
+
+      final mealLower = candidate.meal.trim().toLowerCase();
+      addedHighlightMealsLower.add(mealLower);
+
+      rows.add(TwinComparisonRow(
+        foodName: candidate.meal,
+        meDisplay: '(?)', // always unknown for highlighted recommendations
+        twinRatings: {
+          for (var id in twinIds)
+            id: (userGroups[id]?.firstWhere(
+                      (r) => r.meal == candidate!.meal,
+                      orElse: () => Review(
+                        id: '',
+                        userId: id,
+                        meal: candidate!.meal,
+                        rating: 0,
+                        reviewText: '',
+                        timestamp: DateTime.now(),
+                      ),
+                    ).rating)
+                .toString(),
+        },
+        highlight: true,
+      ));
     }
 
     // --- Overlap rows: foods both me and twins rated similarly ---
@@ -255,6 +281,8 @@ Map<String, double> _calculateSimilarity(
         final meRating = targetMap[meal]!;
         final twinRating = twinMap[meal]!;
         if ((meRating - twinRating).abs() <= 0.5) {
+          // Skip if meal already used in highlighted recommendations
+          if (addedHighlightMealsLower.contains(meal.trim().toLowerCase())) continue;
           rows.add(TwinComparisonRow(
             foodName: meal,
             meDisplay: meRating.toString(),
@@ -277,6 +305,19 @@ Map<String, double> _calculateSimilarity(
         }
       }
     }
+
+    // --- Append similarity score summary row (always) ---
+    rows.add(TwinComparisonRow(
+      foodName: twinIds.isEmpty ? 'Twin Similarity Scores (None found)' : 'Twin Similarity Scores',
+      meDisplay: '',
+      twinRatings: {
+        for (var id in twinIds)
+          id: similarityScores[id] != null
+              ? similarityScores[id]!.toStringAsFixed(3)
+              : '-',
+      },
+      highlight: false,
+    ));
 
     return rows;
   }

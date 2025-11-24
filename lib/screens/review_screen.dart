@@ -5,8 +5,8 @@ import 'package:pdh_recommendation/repositories/review_repository';
 import 'package:video_player/video_player.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -53,7 +53,7 @@ class ReviewPage extends StatefulWidget {
 }
 
 class _ReviewPageState extends State<ReviewPage> {
-  XFile? selectedImage;
+  List<XFile> selectedImages = [];
   XFile? selectedVideo;
   double sliderValue = 0.0;
   bool _submitting = false;
@@ -63,19 +63,38 @@ class _ReviewPageState extends State<ReviewPage> {
   bool _mealsLoading = true;
   String? _mealsError;
   VideoPlayerController? _videoController;
+  bool _reportAsIssue = false; // NEW
+
 
   Future<void> pickImage(ImageSource source) async {
     if (_submitting) return;
-
     try {
       final picked = await imagePicker.pickImage(source: source);
       if (picked != null) {
-        setState(() => selectedImage = picked);
+        setState(() => selectedImages.add(picked));
       }
     } catch (e) {
       print("❌ pickImage error: $e");
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error picking image: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error picking image: $e")),
+      );
+    }
+  }
+
+  Future<void> pickMultipleImages() async {
+    if (_submitting) return;
+    try {
+      final picked = await imagePicker.pickMultiImage();
+      if (picked.isNotEmpty) {
+        setState(() {
+          selectedImages.addAll(picked);
+        });
+      }
+    } catch (e) {
+      print("❌ pickMultiImage error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error picking images: $e")),
+      );
     }
   }
 
@@ -323,118 +342,118 @@ class _ReviewPageState extends State<ReviewPage> {
   }
 
   Future<void> submitReview() async {
-    print("🔔 submitReview called");
-    final currentMealPeriod = getCurrentMealPeriod();
-    if (currentMealPeriod == null) {
-      print("⚠️ Hall closed, aborting submitReview");
+    if (_submitting) return;
+
+    // Meal is mandatory for both reviews and issues
+    if (selectedMeal == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Panther Dining Hall is closed now.")),
+        const SnackBar(content: Text('Select a meal first.')),
       );
       return;
     }
 
-    // ✅ Validation
-    if (selectedMeal == null ||
-        sliderValue <= 0 ||
-        reviewTextController.text.trim().isEmpty) {
-      print(
-        "⚠️ Validation failed: "
-        "meal=$selectedMeal, rating=$sliderValue, "
-        "textLength=${reviewTextController.text.trim().length}",
-      );
+    // For normal review require a rating (sliderValue > 0 maybe)
+    if (!_reportAsIssue && sliderValue <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please fill in all required fields.")),
+        const SnackBar(content: Text('Set a rating before submitting.')),
       );
       return;
     }
 
     setState(() => _submitting = true);
 
-    final reviewRef = FirebaseFirestore.instance.collection('reviews').doc(); // create doc reference
-    final reviewId = reviewRef.id;
-
-    String? mediaUrl;
-    try {
-      if (selectedImage != null) {
-        print("▶️ Starting image upload: ${selectedImage!.path}");
-        mediaUrl = await uploadImage(File(selectedImage!.path), reviewId);
-        print("✅ uploadImage returned URL: $mediaUrl");
-
-        if (mediaUrl == null) {
-          throw Exception("Image upload failed");
-        }
-      } else if (selectedVideo != null) {
-        mediaUrl = await uploadVideo(File(selectedVideo!.path), reviewId);
-      }
-    } catch (e) {
-      print("❌ uploadImage threw error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Image upload failed: $e")),
-      );
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
       setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not signed in.')),
+      );
       return;
     }
 
-    // after you compute mediaUrl and have reviewId
-    final repo = ReviewRepository();
-    final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUid == null) {
-      throw Exception('Not logged in');
-    }
-
-    // Build Review model (ensure timestamp uses DateTime.now(); repo will write serverTimestamp on create)
-    final review = Review(
-      id: reviewId,
-      userId: currentUid,
-      meal: selectedMeal ?? '',
-      rating: sliderValue,
-      reviewText: reviewTextController.text.trim(),
-      timestamp: DateTime.now(),
-      tags: selectedTags,
-      mediaUrl: mediaUrl,
-      likesCount: 0, // always default 0 on creation
-    );
-
-
     try {
-      await repo.createReview(review);
+      // Legacy dateKey removed; rely solely on timestamp field
 
-      // ✅ Update favorites only if the heart toggle is on
-      if (selectedMeal != null && userFavorites.contains(selectedMeal)) {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid != null) {
-          final userDoc = FirebaseFirestore.instance.collection('users').doc(uid);
-          await userDoc.set({
-            'favorites': FieldValue.arrayUnion([selectedMeal])
-          }, SetOptions(merge: true));
-          print("✅ Updated favorites with $selectedMeal");
+      // Prepare media containers
+      final List<String> imageUrls = [];
+      String? videoUrl;
+
+      // For normal reviews we want to use helper upload* functions with a stable reviewId
+      String? reviewId;
+      if (!_reportAsIssue) {
+        // Pre-generate Firestore doc id so media path can nest under it
+        reviewId = FirebaseFirestore.instance.collection('reviews').doc().id;
+        for (final img in selectedImages) {
+          final url = await uploadImage(File(img.path), reviewId);
+          if (url != null) imageUrls.add(url);
+        }
+        if (selectedVideo != null) {
+          final url = await uploadVideo(File(selectedVideo!.path), reviewId);
+          videoUrl = url;
+        }
+      } else {
+        // Issues still use direct path logic (no reviewId-based storage) to avoid changing existing behavior
+        for (final img in selectedImages) {
+          final ref = FirebaseStorage.instance
+              .ref()
+              .child('issue_images/${uid}_${DateTime.now().millisecondsSinceEpoch}_${imageUrls.length}.jpg');
+          await ref.putFile(File(img.path));
+          imageUrls.add(await ref.getDownloadURL());
+        }
+        if (selectedVideo != null) {
+          final ref = FirebaseStorage.instance
+              .ref()
+              .child('issue_videos/${uid}_${DateTime.now().millisecondsSinceEpoch}.mp4');
+          await ref.putFile(File(selectedVideo!.path));
+          videoUrl = await ref.getDownloadURL();
         }
       }
 
-      // ✅ When review is complete, return to previous screen
-      final appState = Provider.of<MyAppState>(context, listen: false);
-      appState.setSelectedIndex(2); // Dashboard tab index
-      Navigator.of(context).pop();  // close the review screen
+      if (_reportAsIssue) {
+        // Issue document (no rating)
+        await FirebaseFirestore.instance.collection('issues').add({
+          'userId': uid,
+          'meal': selectedMeal,
+          'text': reviewTextController.text.trim(),
+          'tags': selectedTags.toList(),
+          'imageUrls': imageUrls,
+          'videoUrl': videoUrl,
+          'status': 'open',
+          'timestamp': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Issue submitted.')),
+        );
+      } else {
+        // Normal review
+        await FirebaseFirestore.instance.collection('reviews').doc(reviewId).set({
+          'userId': uid,
+          'meal': selectedMeal,
+          'reviewText': reviewTextController.text.trim(),
+          'timestamp': FieldValue.serverTimestamp(),
+          'rating': sliderValue,
+          'tags': selectedTags.toList(),
+          'imageUrls': imageUrls,
+          'videoUrl': videoUrl,
+          'likesCount': 0,
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Review submitted.')),
+        );
+      }
 
-      // ✅ Reset UI state
-      setState(() {
-        selectedImage = null;        
-        sliderValue = .5;
-        selectedTags.clear();
-        reviewTextController.clear();
-        selectedMeal = null;
-      });
+      Navigator.pop(context);
     } catch (e) {
-      print("❌ Firestore.add error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error submitting review: $e")),
+        SnackBar(content: Text('Error: $e')),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
-void showCameraOptions(BuildContext context) {
+  void showCameraOptions(BuildContext context) {
   showModalBottomSheet(
     context: context,
     builder: (BuildContext ctx) {
@@ -467,7 +486,7 @@ void showCameraOptions(BuildContext context) {
   Widget build(BuildContext context) {
     // REMOVE appState.isLoading gate (it was blocking everything with white spinner)
     final currentMealPeriod = getCurrentMealPeriod();
-    final todayDate = getTodayDateString();
+    // todayDate no longer needed (dateKey removed)
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -635,24 +654,60 @@ void showCameraOptions(BuildContext context) {
                               child: const Icon(Icons.image),
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => pickMultipleImages(),
+                              child: const Icon(Icons.collections),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          if (selectedImage != null)
-                            Column(
-                              children: [
-                                const Text('Selected Image'),
-                                const SizedBox(height: 8),
-                                Image.file(
-                                  File(selectedImage!.path),
-                                  width: 100,
-                                  height: 100,
-                                  fit: BoxFit.cover,
+                          if (selectedImages.isNotEmpty)
+                            Expanded(
+                              child: SizedBox(
+                                height: 120,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemBuilder: (ctx, i) {
+                                    final img = selectedImages[i];
+                                    return Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.file(
+                                            File(img.path),
+                                            width: 100,
+                                            height: 100,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                        Positioned(
+                                          top: 2,
+                                          right: 2,
+                                          child: InkWell(
+                                            onTap: _submitting ? null : () => setState(() => selectedImages.removeAt(i)),
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: Colors.black54,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              padding: const EdgeInsets.all(2),
+                                              child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                  itemCount: selectedImages.length,
                                 ),
-                              ],
+                              ),
                             ),
                           if (selectedVideo != null &&
                               _videoController != null &&
@@ -685,6 +740,26 @@ void showCameraOptions(BuildContext context) {
                             ),
                         ],
                       ),
+                      // NEW: Issue toggle (meal must already be chosen)
+                      Row(
+                        children: [
+                          Switch(
+                            value: _reportAsIssue,
+                            onChanged: _submitting
+                                ? null
+                                : (v) => setState(() => _reportAsIssue = v),
+                          ),
+                          const Text('Report as issue'),
+                        ],
+                      ),
+                      if (_reportAsIssue)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'This will notify staff. No rating saved.',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -701,7 +776,7 @@ void showCameraOptions(BuildContext context) {
                           color: Colors.white,
                         ),
                       )
-                    : const Text("Submit Review"),
+                    : Text(_reportAsIssue ? 'Submit Issue' : 'Submit Review'),
               ),
             ],
           ),

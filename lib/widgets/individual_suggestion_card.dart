@@ -6,8 +6,9 @@ import 'package:url_launcher/url_launcher.dart'; // NEW
 
 class IndividualSuggestionCard extends StatelessWidget {
   final DocumentSnapshot doc;
+  final bool isStaff;
 
-  const IndividualSuggestionCard({super.key, required this.doc});
+  const IndividualSuggestionCard({super.key, required this.doc, this.isStaff = false});
 
   Future<String> _fetchAuthorName(String? userId) async {
     if (userId == null || userId.isEmpty) return 'Anonymous';
@@ -55,7 +56,7 @@ class IndividualSuggestionCard extends StatelessWidget {
       onTap: () {
         showDialog(
           context: context,
-          builder: (context) => DetailedSuggestionPopup(doc: doc),
+          builder: (context) => DetailedSuggestionPopup(doc: doc, isStaff: isStaff),
         );
       },
       child: Container(

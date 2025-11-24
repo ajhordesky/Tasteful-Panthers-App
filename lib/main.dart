@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'package:pdh_recommendation/navigation_controller.dart';
+import 'package:pdh_recommendation/staff_navigation_controller.dart'; // staff nav controller
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -41,31 +43,44 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// AuthWrapper listens to the FirebaseAuth state and returns
-/// either the NavigationController (if logged in) or a Scaffold containing LoginPage.
+/// AuthWrapper listens to auth and then loads user doc to decide view.
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        // When the connection is active, determine which page to show.
-        if (snapshot.connectionState == ConnectionState.active) {
-          final User? user = snapshot.data;
-          if (user == null) {
-            // Wrap the LoginPage in a Scaffold to provide Material context.
-            return Scaffold(
-              body: LoginPage(),
-              backgroundColor: Colors.white,
-            );
-          } else {
-            // Assume NavigationController already includes its own Scaffold.
-            return Scaffold(body: NavigationController());
-          }
+      builder: (context, authSnap) {
+        if (authSnap.connectionState != ConnectionState.active) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        // While waiting for authentication state, show a loading indicator.
-        return Scaffold(body: Center(child: CircularProgressIndicator()));
+        final user = authSnap.data;
+        if (user == null) {
+          return const Scaffold(
+            body: LoginPage(),
+            backgroundColor: Colors.white,
+          );
+        }
+        // Load user profile to fetch isStaff
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+          builder: (context, userSnap) {
+            if (userSnap.connectionState != ConnectionState.done) {
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            }
+            bool isStaff = false;
+            if (userSnap.hasData && userSnap.data!.exists) {
+              final data = userSnap.data!.data() as Map<String, dynamic>? ?? {};
+              isStaff = (data['isStaff'] == true);
+            }
+            // Default false if missing
+            if (isStaff) {
+              // Use staff navigation controller to provide bottom nav across staff views.
+              return const StaffNavigationController();
+            }
+            return Scaffold(body: NavigationController());
+          },
+        );
       },
     );
   }

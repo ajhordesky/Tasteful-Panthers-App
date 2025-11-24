@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdh_recommendation/models/meal.dart';
 import 'package:pdh_recommendation/services/favorites_service.dart';
 import 'package:pdh_recommendation/services/tasteful_twin_service.dart';
@@ -23,6 +24,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late Future<List<Meal>> _crowdFavorites;
   late Future<List<Meal>> _favorites;
   late Future<List<String>> _twinSuggestions;
+  late Future<List<String>> _realizedSuggestions;
 
   @override
   void initState() {
@@ -30,6 +32,49 @@ class _DashboardPageState extends State<DashboardPage> {
     _userId = FirebaseAuth.instance.currentUser?.uid ?? "";
     _twinSuggestions = TastefulTwinService().getTopFoodsFromTwins(_userId);
     _favorites = FavoritesService().getTodaysFavorites();
+    _realizedSuggestions = _getRealizedSuggestions();
+  }
+
+  Future<List<String>> _getRealizedSuggestions() async {
+    try {
+      // Fetch today's meals
+      final now = DateTime.now();
+      final todayKey = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final mealSnapshot = await FirebaseFirestore.instance
+          .collection('meals')
+          .doc(todayKey)
+          .collection('meals')
+          .get();
+      final todayMealNames = mealSnapshot.docs
+          .map((d) => (d.data()['name'] as String?)?.trim().toLowerCase())
+          .whereType<String>()
+          .toSet();
+
+      if (todayMealNames.isEmpty) return [];
+
+      // Fetch recent suggestions (limit to avoid large reads)
+      final suggestionSnapshot = await FirebaseFirestore.instance
+          .collection('suggestions')
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .get();
+
+      final matched = <String>{};
+      for (final doc in suggestionSnapshot.docs) {
+        final data = doc.data();
+        final titleRaw = data['title'];
+        if (titleRaw is! String) continue;
+        final normalized = titleRaw.trim().toLowerCase();
+        if (todayMealNames.contains(normalized)) {
+          matched.add(titleRaw.trim());
+          if (matched.length >= 3) break; // limit to 3 per requirements
+        }
+      }
+      return matched.toList();
+    } catch (e) {
+      debugPrint('Error fetching realized suggestions: $e');
+      return [];
+    }
   }
 
   @override
@@ -104,7 +149,16 @@ class _DashboardPageState extends State<DashboardPage> {
                         },
                       ),
 
-                      DashboardRealizedCard(realizedSuggestions: []),
+                      FutureBuilder<List<String>>(
+                        future: _realizedSuggestions,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const DashboardRealizedCard(realizedSuggestions: []);
+                          }
+                          final realized = snapshot.data ?? [];
+                          return DashboardRealizedCard(realizedSuggestions: realized);
+                        },
+                      ),
                     ],
                   ),
                 ),
