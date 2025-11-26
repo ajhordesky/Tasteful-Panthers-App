@@ -79,12 +79,17 @@ class StaffSuggestionScreen extends StatelessWidget {
                   stream: FirebaseFirestore.instance
                       .collection('suggestions')
                       .where('planned', isEqualTo: true)
-                      .orderBy('plannedAt', descending: true)
                       .limit(50)
                       .snapshots(),
                   builder: (context, plannedSnap) {
                     if (plannedSnap.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
+                    }
+                    if (plannedSnap.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Text('Error loading planned suggestions: ${plannedSnap.error}'),
+                      );
                     }
                     final plannedDocs = plannedSnap.data?.docs ?? [];
                     return Card(

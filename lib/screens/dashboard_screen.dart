@@ -183,10 +183,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             ),
                       ),
                       const SizedBox(height: 12),
-                      DashboardPredictionsCard(
-                        placement: "You’re 123 out of 4,234",
-                        accuracy: "99% accuracy",
-                      ),
+                      const DashboardPredictionsCard(),
                       DashboardPopularityCard(),
                     ],
                   ),
