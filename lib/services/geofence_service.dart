@@ -51,8 +51,8 @@ class GeofenceService {
   final Map<String, Timer> _visitTimers = {};
   
   // Default geofence coordinates (Googleplex)
-  final double _defaultLatitude = 28.06248;
-  final double _defaultLongitude = -80.622784;
+  final double _defaultLatitude = 28.0623017;
+  final double _defaultLongitude = -80.6222417;
   final double _defaultRadius = 5.0;
 
   Stream<GeofenceEvent> get onGeofenceEvent => _geofenceEventController.stream;
@@ -67,50 +67,46 @@ class GeofenceService {
   // Get current user ID dynamically
   String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
-  // Replace the private _verifyUserAuthentication method with this public one:
-Future<bool> verifyUserAuthentication({String? operation}) async {
-  final userId = currentUserId;
-  if (userId == null) {
-    print('❌ No authenticated user found${operation != null ? ' for $operation' : ''}');
-    return false;
-  }
-  
-  // Verify the user document exists in Firestore
-  try {
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .get();
-        
-    if (!userDoc.exists) {
-      print('📝 Creating new user document for $userId');
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .set({
-            'num_visits': 0,
-            'average_duration_at_pdh': 0,
-            'created_at': FieldValue.serverTimestamp(),
-            'last_updated': FieldValue.serverTimestamp(),
-          });
-      print('✅ Created new user document for $userId');
+  Future<bool> verifyUserAuthentication({String? operation}) async {
+    final userId = currentUserId;
+    if (userId == null) {
+      print('❌ No authenticated user found${operation != null ? ' for $operation' : ''}');
+      return false;
     }
     
-    return true;
-  } catch (e) {
-    print('❌ Error verifying user authentication: $e');
-    return false;
+    // Verify the user document exists in Firestore
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+          
+      if (!userDoc.exists) {
+        print('📝 Creating new user document for $userId');
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .set({
+              'num_visits': 0,
+              'average_duration_at_pdh': 0,
+              'created_at': FieldValue.serverTimestamp(),
+              'last_updated': FieldValue.serverTimestamp(),
+            });
+      }
+      
+      return true;
+    } catch (e) {
+      print('❌ Error verifying user authentication: $e');
+      return false;
+    }
   }
-}
 
   static void initializeWorkmanager() {
-    Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+    Workmanager().initialize(callbackDispatcher, isInDebugMode: false); // Reduced debug
   }
 
   static void callbackDispatcher() {
     Workmanager().executeTask((taskName, inputData) async {
-      print("Background task executed: $taskName");
-      
       try {
         // Initialize Firebase in background if needed
         await Firebase.initializeApp();
@@ -126,7 +122,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
             return false;
         }
       } catch (e) {
-        print("Background task error: $e");
         return Future.value(false);
       }
     });
@@ -134,23 +129,20 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
 
   static Future<bool> _checkGeofencesInBackground() async {
     try {
-      final position = await Geolocator.getCurrentPosition(
+      await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
       );
-      print("Background geofence check at: ${position.latitude}, ${position.longitude}");
       return true;
     } catch (e) {
-      print("Error in background geofence check: $e");
       return false;
     }
   }
 
   static Future<void> _getPeriodicLocationUpdate() async {
     try {
-      final position = await Geolocator.getCurrentPosition();
-      print("Background location: ${position.latitude}, ${position.longitude}");
+      await Geolocator.getCurrentPosition();
     } catch (e) {
-      print("Error getting background location: $e");
+      // Silent fail for background location
     }
   }
 
@@ -161,20 +153,43 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     print('   - Monitoring: $_isMonitoring');
     print('   - Geofences count: ${_geofences.length}');
     print('   - Active timers: ${_visitTimers.length}');
-    print('   - Monitoring timer: ${_monitoringTimer != null ? "active" : "inactive"}');
     print('   - Current User ID: $userId');
-    print('   - User Authenticated: ${userId != null}');
-    
-    for (final geofence in _geofences) {
-      print('   - Geofence "${geofence.identifier}": inside=${geofence.isInside}');
-    }
   }
 
-  Future<void> reset() async {
-    print('🔄 Resetting GeofenceService...');
-    
-    logCurrentState();
+  // Add to GeofenceService class in geofence_service.dart
+Future<void> stopAllServices() async {
+  print('🛑 Stopping all geofence services for logout...');
+  
+  // Stop monitoring timer
+  _monitoringTimer?.cancel();
+  _monitoringTimer = null;
+  
+  // Cancel all visit timers
+  _cancelAllVisitTimers();
+  
+  // Cancel background work
+  try {
+    await Workmanager().cancelByUniqueName("geofence_monitoring");
+    await Workmanager().cancelAll();
+  } catch (e) {
+    print('⚠️ Error cancelling background work: $e');
+  }
+  
+  // Clear geofences
+  _geofences.clear();
+  
+  // Reset flags
+  _isMonitoring = false;
+  
+  print('✅ All geofence services stopped');
+}
 
+// Add a method to check if user is authenticated before processing events
+bool get isUserAuthenticated {
+  return FirebaseAuth.instance.currentUser != null;
+}
+
+  Future<void> reset() async {
     // Stop monitoring first
     _monitoringTimer?.cancel();
     _monitoringTimer = null;
@@ -194,7 +209,7 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     try {
       await Workmanager().cancelByUniqueName("geofence_monitoring");
     } catch (e) {
-      print('⚠️ Error cancelling background work: $e');
+      // Silent fail for background work cancellation
     }
     
     // Clear any saved geofences from shared preferences
@@ -205,8 +220,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     // Reset monitoring flag
     _isMonitoring = false;
     _isInitialized = false;
-    
-    print('✅ GeofenceService reset complete - all state cleared');
   }
 
   /// Reinitialize the service from scratch
@@ -218,12 +231,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
       // Then initialize fresh
       final success = await initialize();
       
-      if (success) {
-        print('✅ GeofenceService reinitialized successfully');
-      } else {
-        print('❌ GeofenceService reinitialization failed');
-      }
-      
       return success;
     } catch (e) {
       print('❌ Error during geofence service reinitialization: $e');
@@ -233,7 +240,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
 
   Future<bool> initialize() async {
     if (_isInitialized) {
-      print('⚠️ GeofenceService already initialized - skipping');
       return true;
     }
 
@@ -245,7 +251,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
       await _loadGeofences();
       
       _isInitialized = true;
-      print("✅ GeofenceService initialized");
       return true;
     } catch (e) {
       print("❌ Failed to initialize GeofenceService: $e");
@@ -268,9 +273,8 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
             radius: map['radius'],
             isInside: map['isInside'] ?? false,
           ));
-          print("📍 Loaded geofence: ${map['identifier']}");
         } catch (e) {
-          print("❌ Error loading geofence: $e");
+          // Silent fail for geofence loading
         }
       }
     }
@@ -302,7 +306,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
 
     // Double-check that we're not already monitoring
     if (_isMonitoring) {
-      print('⚠️ Geofencing already active, stopping first...');
       await stopGeofencing();
     }
 
@@ -316,13 +319,11 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
 
       // Ensure service is initialized
       if (!_isInitialized) {
-        print('🔄 Service not initialized, initializing now...');
         await initialize();
       }
 
       // Add default geofence if none exist
       if (_geofences.isEmpty) {
-        print('📍 No geofences found, adding default...');
         await addGeofence(
           identifier: 'target_location',
           latitude: _defaultLatitude,
@@ -346,9 +347,7 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
 
       _isMonitoring = true;
 
-      logCurrentState();
-
-      print("✅ Geofence monitoring started with ${_geofences.length} geofences for user $currentUserId");
+      print("✅ Geofence monitoring started with ${_geofences.length} geofences");
       return true;
     } catch (e) {
       print("❌ Failed to start geofencing: $e");
@@ -357,8 +356,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
   }
 
   Future<void> stopGeofencing() async {
-    print('🛑 Stopping geofencing with full cleanup...');
-    
     // Cancel monitoring timer
     _monitoringTimer?.cancel();
     _monitoringTimer = null;
@@ -370,24 +367,34 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     try {
       await Workmanager().cancelByUniqueName("geofence_monitoring");
     } catch (e) {
-      print('⚠️ Error cancelling background work: $e');
+      // Silent fail for background work cancellation
     }
     
     _isMonitoring = false;
-    
-    print('✅ Geofencing fully stopped');
   }
 
   void _startPeriodicMonitoring() {
     // Check geofences every 30 seconds when app is in foreground
-    _monitoringTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _monitoringTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _checkGeofences();
     });
   }
 
   Future<void> _checkGeofences() async {
-    try {
-      final currentPosition = await Geolocator.getCurrentPosition(
+  // Check if user is authenticated before checking geofences
+  if (!isUserAuthenticated) {
+    print('🔐 User not authenticated - stopping geofence monitoring');
+    await stopGeofencing();
+    return;
+  }
+
+  try {
+    final currentPosition = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    _locationController.add(currentPosition);
+      await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
@@ -418,25 +425,30 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
       // Save geofence states
       await _saveGeofences();
     } catch (e) {
-      print("❌ Error checking geofences: $e");
+      // Silent fail for geofence check errors
     }
   }
 
   Future<void> _triggerGeofenceEvent(GeofenceRegion geofence, String action, Position position) async {
-    final userId = currentUserId;
-    if (userId == null) {
-      print('❌ Cannot process geofence event - no authenticated user');
-      return;
-    }
+  // Check if user is authenticated before processing events
+  if (!isUserAuthenticated) {
+    print('🔐 User not authenticated - ignoring geofence event');
+    return;
+  }
 
-    final event = GeofenceEvent(
-      identifier: geofence.identifier,
-      action: action,
-      latitude: position.latitude,
-      longitude: position.longitude,
-      timestamp: DateTime.now(),
-      userId: userId,
-    );
+  final userId = currentUserId;
+  if (userId == null) {
+    return;
+  }
+
+  final event = GeofenceEvent(
+    identifier: geofence.identifier,
+    action: action,
+    latitude: position.latitude,
+    longitude: position.longitude,
+    timestamp: DateTime.now(),
+    userId: userId,
+  );
 
     if (action == 'ENTER') {
       try {
@@ -453,8 +465,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
         _startHalfwayNotificationTimer(geofence.identifier, event.timestamp);
 
         _handleGeofenceNotification(event);
-        
-        print('🎯 Geofence ENTER Event: ${geofence.identifier} for user $userId');
       } catch (e) {
         print('❌ Error recording ENTER event: $e');
       }
@@ -470,7 +480,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
 
         // Ensure user document exists with basic structure
         if (!userDoc.exists) {
-          print('📝 Creating new user document for $userId during EXIT event');
           await FirebaseFirestore.instance
                 .collection('users')
                 .doc(userId)
@@ -518,10 +527,7 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
                     'entrance': FieldValue.delete(), // Clear entrance time
                     'last_updated': FieldValue.serverTimestamp(),
                   }, SetOptions(merge: true));
-                  
-            print('📊 Updated user stats: average=$newAverage, visits=${totalVisits + 1} for user $userId');
           } else {
-            print('⚠️ No entrance time found for EXIT event - incrementing visit count only');
             // Still increment visit count but without duration calculation
             await FirebaseFirestore.instance
                   .collection('users')
@@ -544,18 +550,13 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
   void _startHalfwayNotificationTimer(String geofenceIdentifier, DateTime entranceTime) {
     // Get user's average visit duration from Firestore
     _getAverageVisitDuration().then((averageDuration) {
-      print("⏰ Average duration for halfway calculation: $averageDuration seconds");
-      
       if (averageDuration > 0) {
         // Calculate halfway point (in seconds)
         int halfwayPoint = (averageDuration ~/ 2);
         
         if (halfwayPoint > 0) {
-          print("⏰ Scheduling halfway notification in $halfwayPoint seconds");
-          
           // Create timer that will trigger at halfway point
           Timer timer = Timer(Duration(seconds: halfwayPoint), () {
-            print("🔔 Halfway timer triggered for $geofenceIdentifier");
             _sendHalfwayNotification(geofenceIdentifier);
             // Remove timer from tracking since it's completed
             _visitTimers.remove(geofenceIdentifier);
@@ -563,16 +564,10 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
           
           // Store the timer so we can cancel it if user exits early
           _visitTimers[geofenceIdentifier] = timer;
-          
-          print("⏰ Halfway notification scheduled for $halfwayPoint seconds from now");
-        } else {
-          print("⚠️ Halfway point is 0 or negative, not scheduling notification");
         }
-      } else {
-        print("⚠️ No average duration available, not scheduling halfway notification");
       }
     }).catchError((error) {
-      print("❌ Error getting average duration for halfway notification: $error");
+      // Silent fail for halfway notification setup
     });
   }
 
@@ -580,7 +575,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     try {
       final userId = currentUserId;
       if (userId == null) {
-        print('❌ No authenticated user found for getting average duration');
         return 0;
       }
 
@@ -592,13 +586,10 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
       if (userDoc.exists) {
         Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
         final average = userData['average_duration_at_pdh'] ?? 0;
-        print("📊 Retrieved average duration: $average seconds for user $userId");
         return average;
       }
-      print("ℹ️ No user document found for average duration calculation");
       return 0;
     } catch (e) {
-      print("❌ Error getting average visit duration: $e");
       return 0;
     }
   }
@@ -608,7 +599,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     String message = "You're halfway through your visit! How's your meal so far?";
     
     notificationService.showNotification(title, message);
-    print("🔔 Halfway notification sent for $geofenceIdentifier");
   }
 
   void _cancelVisitTimer(String geofenceIdentifier) {
@@ -616,7 +606,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     if (timer != null) {
       timer.cancel();
       _visitTimers.remove(geofenceIdentifier);
-      print("⏹️ Cancelled halfway timer for $geofenceIdentifier");
     }
   }
 
@@ -625,7 +614,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
       timer.cancel();
     });
     _visitTimers.clear();
-    print("⏹️ All visit timers cancelled");
   }
 
   Future<void> addGeofence({
@@ -642,13 +630,11 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
     ));
 
     await _saveGeofences();
-    print("📍 Geofence added: $identifier ($latitude, $longitude) radius: ${radius}m");
   }
 
   Future<void> removeGeofence(String identifier) async {
     _geofences.removeWhere((geofence) => geofence.identifier == identifier);
     await _saveGeofences();
-    print("🗑️ Geofence removed: $identifier");
   }
 
   List<GeofenceRegion> getGeofences() {
@@ -674,7 +660,6 @@ Future<bool> verifyUserAuthentication({String? operation}) async {
         desiredAccuracy: LocationAccuracy.high,
       );
     } catch (e) {
-      print("❌ Failed to get current location: $e");
       return null;
     }
   }

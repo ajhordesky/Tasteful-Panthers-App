@@ -98,8 +98,6 @@ class _ReviewPopupState extends State<ReviewPopup> {
   Widget build(BuildContext context) {
     final data = widget.doc.data() as Map<String, dynamic>;
     final String meal = data['meal'] ?? 'Unknown Meal';
-    final double rating =
-        data['rating'] != null ? (data['rating'] as num).toDouble() : 0.0;
     final String reviewText = data['reviewText'] ?? 'No review provided.';
 
     return Dialog(

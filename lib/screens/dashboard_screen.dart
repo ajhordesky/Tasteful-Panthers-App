@@ -21,7 +21,6 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   late String _userId = FirebaseAuth.instance.currentUser?.uid ?? "";
-  late Future<List<Meal>> _crowdFavorites;
   late Future<List<Meal>> _favorites;
   late Future<List<String>> _twinSuggestions;
   late Future<List<String>> _realizedSuggestions;

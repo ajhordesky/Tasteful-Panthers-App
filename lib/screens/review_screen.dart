@@ -1,7 +1,5 @@
 import 'dart:io';
 
-import 'package:pdh_recommendation/models/review.dart';
-import 'package:pdh_recommendation/repositories/review_repository';
 import 'package:video_player/video_player.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,8 +7,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
-import '../main.dart';
 
 final imagePicker = ImagePicker();
 

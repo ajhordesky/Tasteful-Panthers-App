@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:pdh_recommendation/navigation_controller.dart';
@@ -140,33 +141,45 @@ class NotificationService {
     }
   }
 
-  // Handle notification tap - INSTANCE METHOD
-  void _onNotificationTap(NotificationResponse response) {
-    final String? payload = response.payload;
-    if (payload != null) {
-      final int type = int.tryParse(payload) ?? TYPE_NOTHING;
-      
-      print('🔔 Notification tapped - type: $type');
-      _logNavigationState();
-      
-      // The notification will auto-dismiss due to autoCancel: true
-      // Now handle the redirection
-      
-      // Always check navigation state dynamically
-      if (!_isNavigationReady) {
-        print('⏳ Navigation not ready, queuing notification type: $type');
-        _pendingNotifications.add({'type': type, 'timestamp': DateTime.now()});
-        
-        // Try to process after a short delay in case navigation becomes ready
-        Future.delayed(Duration(milliseconds: 100), () {
-          _processPendingNotificationsIfReady();
-        });
-        return;
-      }
-      
-      _handleRedirection(type);
+  // Add to NotificationService class in notification_service.dart
+void clearPendingNotifications() {
+  print('🗑️ Clearing all pending notifications');
+  _pendingNotifications.clear();
+}
+
+// Update the _onNotificationTap method to check authentication
+void _onNotificationTap(NotificationResponse response) {
+  final String? payload = response.payload;
+  if (payload != null) {
+    final int type = int.tryParse(payload) ?? TYPE_NOTHING;
+    
+    print('🔔 Notification tapped - type: $type');
+    
+    // Check if user is logged in before processing
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('🔐 User not logged in - ignoring notification tap');
+      return;
     }
+    
+    _logNavigationState();
+    
+    // The notification will auto-dismiss due to autoCancel: true
+    // Now handle the redirection
+    
+    if (!_isNavigationReady) {
+      print('⏳ Navigation not ready, queuing notification type: $type');
+      _pendingNotifications.add({'type': type, 'timestamp': DateTime.now()});
+      
+      Future.delayed(Duration(milliseconds: 100), () {
+        _processPendingNotificationsIfReady();
+      });
+      return;
+    }
+    
+    _handleRedirection(type);
   }
+}
 
   void _processPendingNotificationsIfReady() {
     if (_pendingNotifications.isNotEmpty && _isNavigationReady) {

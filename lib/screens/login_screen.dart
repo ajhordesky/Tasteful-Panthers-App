@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pdh_recommendation/navigation_controller.dart';
 import 'package:pdh_recommendation/screens/signup_screen.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdh_recommendation/services/geofence_service.dart';
 import 'package:pdh_recommendation/services/notification_service.dart';
 import 'package:pdh_recommendation/services/permission_service.dart';
@@ -191,7 +190,21 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+Widget build(BuildContext context) {
+  // Optional: Add a check to ensure no geofence services are running
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // Ensure any residual geofence services are stopped
+    try {
+      final geofenceService = GeofenceService(
+        permissionService: PermissionService(),
+        notificationService: NotificationService(),
+        prefs: await SharedPreferences.getInstance(),
+      );
+      await geofenceService.stopAllServices();
+    } catch (e) {
+      // Silent fail - services might not be initialized
+    }
+  });
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(

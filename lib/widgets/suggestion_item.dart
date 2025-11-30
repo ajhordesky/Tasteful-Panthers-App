@@ -14,7 +14,6 @@ class SuggestionItem extends StatefulWidget {
 
 class _SuggestionItemState extends State<SuggestionItem> {
   String reviewerName = 'Anonymous';
-  bool _isLoaded = false;
 
   @override
   void initState() {
@@ -30,19 +29,16 @@ class _SuggestionItemState extends State<SuggestionItem> {
             final userData = docSnapshot.data() as Map<String, dynamic>;
             setState(() {
               reviewerName = userData['name'] ?? 'Anonymous';
-              _isLoaded = true;
             });
           } else {
             setState(() {
               reviewerName = 'Anonymous';
-              _isLoaded = true;
             });
           }
         })
         .catchError((error) {
           setState(() {
             reviewerName = 'Anonymous';
-            _isLoaded = true;
           });
         });
   }
@@ -56,7 +52,7 @@ class _SuggestionItemState extends State<SuggestionItem> {
     // Convert rating from double to int (defaults to 0 if missing).
     final double ratingDouble =
         data['rating'] != null ? (data['rating'] as num).toDouble() : 0.0;
-    final int stars = ratingDouble.toInt();
+    ratingDouble.toInt();
 
     return GestureDetector(
       onTap: () => showSuggestionPopup(context, widget.doc),

@@ -14,7 +14,7 @@ class StarRating extends StatelessWidget {
   Widget build(BuildContext context) {
     int fullStars = rating.floor(); // Number of full stars
     bool hasHalfStar = (rating - fullStars) >= 0.5; // Check if there's a half star
-    int totalStars = hasHalfStar ? fullStars + 1 : fullStars; // Total filled spots
+// Total filled spots
 
     return Row(
       mainAxisSize: MainAxisSize.min,
