@@ -146,8 +146,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// AuthWrapper listens to auth and then loads user doc to decide view.
-class AuthWrapper extends StatelessWidget {
+/// Navigation Ready Wrapper to ensure notification service has proper navigation context
 class _NavigationReadyWrapper extends StatefulWidget {
   final Widget child;
   final notif_service.NotificationService notificationService;
@@ -206,6 +205,7 @@ class _NavigationReadyWrapperState extends State<_NavigationReadyWrapper> {
   }
 }
 
+/// AuthWrapper listens to auth and then loads user doc to decide view.
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -368,60 +368,53 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnap) {
-        if (authSnap.connectionState != ConnectionState.active) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        final user = authSnap.data;
-        if (user == null) {
-          return const Scaffold(
-            body: LoginPage(),
-            backgroundColor: Colors.white,
-          );
-        }
-        // Load user profile to fetch isStaff
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
-          builder: (context, userSnap) {
-            if (userSnap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
-            }
-            bool isStaff = false;
-            if (userSnap.hasData && userSnap.data!.exists) {
-              final data = userSnap.data!.data() as Map<String, dynamic>? ?? {};
-              isStaff = (data['isStaff'] == true);
-            }
-            // Default false if missing
-            if (isStaff) {
-              // Use staff navigation controller to provide bottom nav across staff views.
-              return const StaffNavigationController();
-            }
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.active) {
-          final User? user = snapshot.data;
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.active) {
+          final User? user = authSnapshot.data;
+          
           if (user == null) {
             // User is not logged in - ensure geofencing is stopped and reset
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _stopGeofencing();
             });
             
-            return Scaffold(
+            return const Scaffold(
               body: LoginPage(),
               backgroundColor: Colors.white,
             );
           } else {
-            // User is logged in - start geofencing with fresh initialization
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _startGeofencingForUser();
-            });
-            
-            return Scaffold(body: NavigationController());
-          },
-        );
+            // User is logged in - load user profile to determine if staff
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+              builder: (context, userSnap) {
+                if (userSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+                
+                bool isStaff = false;
+                if (userSnap.hasData && userSnap.data!.exists) {
+                  final data = userSnap.data!.data() as Map<String, dynamic>? ?? {};
+                  isStaff = (data['isStaff'] == true);
+                }
+                
+                // Start geofencing for authenticated user
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _startGeofencingForUser();
+                });
+                
+                // Return appropriate navigation controller based on user role
+                if (isStaff) {
+                  return const StaffNavigationController();
+                } else {
+                  return const NavigationController();
+                }
+              },
+            );
           }
         }
-        // While waiting for authentication state, show a loading indicator.
-        return Scaffold(
+        
+        // While waiting for authentication state, show a loading indicator
+        return const Scaffold(
           body: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

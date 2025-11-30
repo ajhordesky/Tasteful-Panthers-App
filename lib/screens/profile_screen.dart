@@ -103,12 +103,11 @@ class ProfilePage extends StatelessWidget {
                           .doc(user?.uid)
                           .snapshots(),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
+                        if (!snapshot.hasData || snapshot.connectionState == ConnectionState.waiting) {
                           return const CircularProgressIndicator();
                         }
 
-                        final data =
-                            snapshot.data!.data() as Map<String, dynamic>?;
+                        final data = snapshot.data!.data() as Map<String, dynamic>?;
 
                         final userName = data?['name'] ?? 'Unnamed User';
                         final userEmail = user?.email ?? '';
@@ -284,18 +283,6 @@ class ProfilePage extends StatelessWidget {
                               ..sort((a, b) => b.value.compareTo(a.value));
                             final topRatedLimited = topRatedEntries.take(5).toList();
 
-                        final data =
-                            snapshot.data!.data() as Map<String, dynamic>?;
-                        final favorites = (data?['favorites'] as List<dynamic>?)
-                                ?.map((e) => e.toString())
-                                .toList() ??
-                            [];
-
-                        if (favorites.isEmpty) {
-                          return const Text(
-                              "You haven't marked any favorites yet.");
-                        }
-
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -305,7 +292,7 @@ class ProfilePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 if (favorites.isEmpty)
-                                  const Text("You haven’t marked any favorites yet.")
+                                  const Text("You haven't marked any favorites yet.")
                                 else
                                   Column(
                                     children: favorites.map((meal) {
@@ -365,9 +352,13 @@ class ProfilePage extends StatelessWidget {
                             .snapshots(),
                       ]),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
                           return const Center(child: CircularProgressIndicator());
                         }
+                        if (!snapshot.hasData) {
+                          return const Center(child: Text("No recent activity."));
+                        }
+                        
                         DateTime safeTimestamp(DocumentSnapshot doc) {
                           final data = doc.data() as Map<String, dynamic>?;
                           if (data == null) return DateTime.fromMillisecondsSinceEpoch(0);
