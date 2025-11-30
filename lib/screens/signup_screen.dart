@@ -77,117 +77,139 @@ class _SignupPageState extends State<SignupPage> {
       backgroundColor: Theme.of(context).colorScheme.primary,
       body: SafeArea(
         child: SingleChildScrollView(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    SizedBox(height: 16),
-                    Text(
-                      'Sign Up',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 32),
-                    // Username Field (social media handle)
-                    TextFormField(
-                      controller: _usernameController,
-                      textAlign: TextAlign.left,
-                      decoration: InputDecoration(
-                        labelText: 'Username',
-                        fillColor: Colors.white,
-                        filled: true,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter a username';
-                        }
-                        // Add any specific username validations here.
-                        return null;
-                      },
-                    ),
-                    SizedBox(height: 10),
-                    // Full Name Field
-                    TextFormField(
-                      controller: _nameController,
-                      textAlign: TextAlign.left,
-                      decoration: InputDecoration(
-                        labelText: 'Full Name',
-                        fillColor: Colors.white,
-                        filled: true,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your full name';
-                        }
-                        return null;
-                      },
-                    ),
-                    SizedBox(height: 10),
-                    // Email Field
-                    TextFormField(
-                      controller: _emailController,
-                      textAlign: TextAlign.left,
-                      decoration: InputDecoration(
-                        labelText: 'E-mail',
-                        fillColor: Colors.white,
-                        filled: true,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        // Add additional email validation if needed.
-                        return null;
-                      },
-                    ),
-                    SizedBox(height: 10),
-                    // Password Field
-                    TextFormField(
-                      controller: _passwordController,
-                      textAlign: TextAlign.left,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        fillColor: Colors.white,
-                        filled: true,
-                      ),
-                      obscureText: true,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        if (value.length < 6) {
-                          return 'Password should be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    SizedBox(height: 10),
-                    _isLoading
-                        ? CircularProgressIndicator()
-                        : ElevatedButton(
-                          onPressed: _signup,
-                          child: Text('Sign Up'),
-                        ),
-                  ],
+          // Ensure SingleChildScrollView wraps everything
+          padding: const EdgeInsets.all(16), // Added padding
+          child: Column(
+            children: [
+              // Back button at top
+              Align(
+                alignment: Alignment.topLeft,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  child: FloatingActionButton(
+                    backgroundColor: Colors.white,
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    mini: true, // Made it smaller
+                    child: Icon(Icons.arrow_back, size: 20),
+                  ),
                 ),
               ),
-            ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0), // Increased padding
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        SizedBox(height: 16),
+                        Text(
+                          'Sign Up',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 32),
+                        // Username Field (social media handle)
+                        TextFormField(
+                          controller: _usernameController,
+                          textAlign: TextAlign.left,
+                          decoration: InputDecoration(
+                            labelText: 'Username',
+                            fillColor: Colors.white,
+                            filled: true,
+                            border: OutlineInputBorder(), // Added border
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter a username';
+                            }
+                            // Add any specific username validations here.
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 10),
+                        // Full Name Field
+                        TextFormField(
+                          controller: _nameController,
+                          textAlign: TextAlign.left,
+                          decoration: InputDecoration(
+                            labelText: 'Full Name',
+                            fillColor: Colors.white,
+                            filled: true,
+                            border: OutlineInputBorder(), // Added border
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your full name';
+                            }
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 10),
+                        // Email Field
+                        TextFormField(
+                          controller: _emailController,
+                          textAlign: TextAlign.left,
+                          decoration: InputDecoration(
+                            labelText: 'E-mail',
+                            fillColor: Colors.white,
+                            filled: true,
+                            border: OutlineInputBorder(), // Added border
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your email';
+                            }
+                            // Add additional email validation if needed.
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 10),
+                        // Password Field
+                        TextFormField(
+                          controller: _passwordController,
+                          textAlign: TextAlign.left,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            fillColor: Colors.white,
+                            filled: true,
+                            border: OutlineInputBorder(), // Added border
+                          ),
+                          obscureText: true,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your password';
+                            }
+                            if (value.length < 6) {
+                              return 'Password should be at least 6 characters';
+                            }
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 20),
+                        _isLoading
+                            ? CircularProgressIndicator()
+                            : ElevatedButton(
+                                onPressed: _signup,
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 32, vertical: 12),
+                                ),
+                                child: Text('Sign Up'),
+                              ),
+                        SizedBox(height: 20), // Added extra bottom space
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.white,
-        onPressed: () {
-          Navigator.of(context).pop(context);
-        },
-        child: Icon(Icons.arrow_back),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }

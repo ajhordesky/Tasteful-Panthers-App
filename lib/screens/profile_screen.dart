@@ -62,6 +62,7 @@ class ProfilePage extends StatelessWidget {
 
                         final userName = data?['name'] ?? 'Unnamed User';
                         final userEmail = user?.email ?? '';
+                        final averageDurationSeconds = (data?['average_duration_at_pdh'] as num?)?.toDouble() ?? 0.0;
 
                         return Column(
                           children: [
@@ -79,6 +80,63 @@ class ProfilePage extends StatelessWidget {
                                 fontSize: 18,
                                 fontStyle: FontStyle.italic,
                                 color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Average Stay Duration Card
+                            Card(
+                              color: Colors.grey[50], // Light grey background
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(
+                                  color: Colors.grey[300]!,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Average Stay at PDH',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _formatDurationInMinutes(averageDurationSeconds),
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            color: Colors.black87,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    IconButton(
+                                      onPressed: () {
+                                        _showEditDurationDialog(
+                                          context, 
+                                          user!.uid, 
+                                          averageDurationSeconds
+                                        );
+                                      },
+                                      icon: Icon(
+                                        Icons.edit_outlined,
+                                        color: Colors.grey[600],
+                                      ),
+                                      tooltip: 'Edit average stay duration',
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
@@ -116,7 +174,7 @@ class ProfilePage extends StatelessWidget {
 
                         if (favorites.isEmpty) {
                           return const Text(
-                              "You haven’t marked any favorites yet.");
+                              "You haven't marked any favorites yet.");
                         }
 
                         return Column(
@@ -205,6 +263,167 @@ class ProfilePage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  // Helper function to format duration in seconds to display in minutes
+  String _formatDurationInMinutes(double seconds) {
+    final minutes = seconds / 60;
+    if (minutes < 1) {
+      return '${seconds.toStringAsFixed(0)} seconds';
+    } else if (minutes < 60) {
+      return '${minutes.toStringAsFixed(0)} minutes';
+    } else {
+      final hours = minutes / 60;
+      if (hours == hours.truncateToDouble()) {
+        return '${hours.toInt()} hours';
+      } else {
+        return '${hours.toStringAsFixed(1)} hours';
+      }
+    }
+  }
+
+  // Convert seconds to minutes for display in edit dialog
+  double _secondsToMinutes(double seconds) {
+    return seconds / 60;
+  }
+
+  // Convert minutes back to seconds for database storage
+  double _minutesToSeconds(double minutes) {
+    return minutes * 60;
+  }
+
+  // Function to show edit duration dialog
+  void _showEditDurationDialog(BuildContext context, String userId, double currentDurationSeconds) {
+    final currentMinutes = _secondsToMinutes(currentDurationSeconds);
+    final TextEditingController controller = TextEditingController(
+      text: currentMinutes.toStringAsFixed(0)
+    );
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Edit Average Stay',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Enter your average stay duration in minutes:',
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Minutes',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Examples: 15, 30, 45, 60',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final newMinutes = double.tryParse(controller.text);
+                        if (newMinutes != null && newMinutes >= 0) {
+                          try {
+                            // Convert minutes to seconds for database storage
+                            final newDurationSeconds = _minutesToSeconds(newMinutes);
+                            
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(userId)
+                                .update({
+                              'average_duration_at_pdh': newDurationSeconds,
+                            });
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Average stay duration updated!'),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } catch (e) {
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error updating duration: $e'),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Please enter a valid number of minutes'),
+                              backgroundColor: Colors.red,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[800],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
