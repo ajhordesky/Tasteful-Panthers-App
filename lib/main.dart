@@ -7,11 +7,13 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'package:pdh_recommendation/navigation_controller.dart';
+import 'package:pdh_recommendation/staff_navigation_controller.dart'; // staff nav controller
 import 'package:pdh_recommendation/services/geofence_service.dart';
 import 'package:pdh_recommendation/services/notification_service.dart' as notif_service;
 import 'package:pdh_recommendation/services/permission_service.dart' as perm_service;
@@ -144,6 +146,8 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// AuthWrapper listens to auth and then loads user doc to decide view.
+class AuthWrapper extends StatelessWidget {
 class _NavigationReadyWrapper extends StatefulWidget {
   final Widget child;
   final notif_service.NotificationService notificationService;
@@ -364,6 +368,34 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnap) {
+        if (authSnap.connectionState != ConnectionState.active) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final user = authSnap.data;
+        if (user == null) {
+          return const Scaffold(
+            body: LoginPage(),
+            backgroundColor: Colors.white,
+          );
+        }
+        // Load user profile to fetch isStaff
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+          builder: (context, userSnap) {
+            if (userSnap.connectionState != ConnectionState.done) {
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            }
+            bool isStaff = false;
+            if (userSnap.hasData && userSnap.data!.exists) {
+              final data = userSnap.data!.data() as Map<String, dynamic>? ?? {};
+              isStaff = (data['isStaff'] == true);
+            }
+            // Default false if missing
+            if (isStaff) {
+              // Use staff navigation controller to provide bottom nav across staff views.
+              return const StaffNavigationController();
+            }
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.active) {
           final User? user = snapshot.data;
@@ -384,6 +416,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
             });
             
             return Scaffold(body: NavigationController());
+          },
+        );
           }
         }
         // While waiting for authentication state, show a loading indicator.

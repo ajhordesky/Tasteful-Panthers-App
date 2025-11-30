@@ -6,8 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 class DetailedSuggestionPopup extends StatefulWidget {
   final DocumentSnapshot doc;
+  final bool isStaff;
 
-  const DetailedSuggestionPopup({super.key, required this.doc});
+  const DetailedSuggestionPopup({super.key, required this.doc, this.isStaff = false});
 
   @override
   State<DetailedSuggestionPopup> createState() => _DetailedSuggestionPopupState();
@@ -18,6 +19,7 @@ class _DetailedSuggestionPopupState extends State<DetailedSuggestionPopup> {
   int likes = 0;
   bool hasLiked = false;
   bool initialHasLiked = false;
+  bool planned = false;
 
   String _labelFor(String url) {
     try {
@@ -55,6 +57,7 @@ class _DetailedSuggestionPopupState extends State<DetailedSuggestionPopup> {
     super.initState();
     final data = widget.doc.data() as Map<String, dynamic>? ?? {};
     final String? userId = data['userId'];
+    planned = data['planned'] == true;
 
     // Initialize likes count
     likes = (data['likes'] ?? 0) as int;
@@ -97,6 +100,29 @@ class _DetailedSuggestionPopupState extends State<DetailedSuggestionPopup> {
   void dispose() {
     super.dispose();
     _commitLikeChange();
+  }
+
+  Future<void> _markAsPlanned() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      await widget.doc.reference.update({
+        'planned': true,
+        'plannedAt': FieldValue.serverTimestamp(),
+        'plannedBy': uid,
+      });
+      setState(() => planned = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked as planned')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to mark planned: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _commitLikeChange() async {
@@ -218,7 +244,7 @@ class _DetailedSuggestionPopupState extends State<DetailedSuggestionPopup> {
 
               const SizedBox(height: 12.0),
 
-              // --- Like button row ---
+              // --- Like button row + staff actions ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -242,6 +268,26 @@ class _DetailedSuggestionPopupState extends State<DetailedSuggestionPopup> {
                   ),
                 ],
               ),
+
+              if (widget.isStaff) ...[
+                const SizedBox(height: 12.0),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (planned)
+                      const Chip(
+                        label: Text('Planned'),
+                        backgroundColor: Color(0xFFDFF5E1),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: _markAsPlanned,
+                        icon: const Icon(Icons.event_available),
+                        label: const Text('Mark as planned'),
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

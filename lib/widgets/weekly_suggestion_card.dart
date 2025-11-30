@@ -6,8 +6,9 @@ import 'individual_suggestion_card.dart';
 /// Displays a vertically stacked list of IndividualSuggestionCards.
 class WeeklySuggestionCard extends StatelessWidget {
   final List<DocumentSnapshot> suggestionDocs;
+  final String title;
 
-  const WeeklySuggestionCard({super.key, required this.suggestionDocs});
+  const WeeklySuggestionCard({super.key, required this.suggestionDocs, this.title = "This Week's Suggestions"});
 
   @override
   Widget build(BuildContext context) {
@@ -20,9 +21,9 @@ class WeeklySuggestionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "This Week's Suggestions",
-              style: TextStyle(
+            Text(
+              title,
+              style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 18.0,
               ),

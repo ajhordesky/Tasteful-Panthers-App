@@ -93,6 +93,8 @@ class _PredictionScreenState extends State<PredictionScreen> {
     try {
       // Overwrite or create prediction (owner can change their pick)
       await predRef.set({
+        // Store uid to enable collectionGroup queries by user
+        'uid': uid,
         'mealId': _selectedMealId,
         'mealName': mealName,
         'updatedAt': FieldValue.serverTimestamp(),

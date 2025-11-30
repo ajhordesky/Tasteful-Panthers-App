@@ -11,7 +11,8 @@ class DashboardFavoritesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () {
-        Provider.of<MyAppState>(context, listen: false).setSelectedIndex(3);
+        // Navigate to Profile tab (index 4) while retaining bottom navigation.
+        Provider.of<MyAppState>(context, listen: false).setSelectedIndex(4);
       },
       child: Container(
         width: double.infinity,

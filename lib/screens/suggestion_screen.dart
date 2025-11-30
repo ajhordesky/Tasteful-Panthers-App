@@ -78,6 +78,8 @@ class _SuggestionPageState extends State<SuggestionPage> {
       suggestionTitleController.clear();
       suggestionTextController.clear();
       recipeLinkController.clear(); // reset link
+      // Return to previous screen after successful submission
+      Navigator.of(context).pop();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: $e")),

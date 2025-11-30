@@ -1,8 +1,7 @@
-import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { DateTime } from 'luxon';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { onCall } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -10,12 +9,6 @@ const db = admin.firestore();
 // Configure the timezone you want scoring to use (e.g., cafeteria/local time)
 // Change via env: firebase functions:config:set predictions.tz="America/New_York"
 const DEFAULT_TIMEZONE = 'UTC';
-
-function getTz(): string {
-  // firebase-functions v2 types may not expose .config() in TS types; read via any
-  const cfg = (functions as any).config || {};
-  return cfg?.predictions?.tz || process.env.PREDICTIONS_TZ || DEFAULT_TIMEZONE;
-}
 
 function dateKeyFromDate(dt: DateTime): string {
   return dt.toFormat('yyyy-LL-dd');
@@ -204,28 +197,30 @@ async function scorePredictionsForDate(dateKey: string, tz: string, opts: { forc
 }
 
 // Runs daily and scores yesterday's predictions
-export const scoreYesterdayPredictions = onSchedule({ schedule: '0 6 * * *', timeZone: getTz() }, async (event: any) => {
-  const tz = getTz();
-  const nowTz = DateTime.now().setZone(tz);
-  const target = nowTz.minus({ days: 1 });
-  const dateKey = dateKeyFromDate(target);
-  await scorePredictionsForDate(dateKey, tz);
-  return;
-});
+export const scoreYesterdayPredictions = onSchedule(
+  { schedule: '0 6 * * *', timeZone: 'America/New_York', region: 'us-central1' },
+  async () => {
+    const tz = 'America/New_York';
+    const nowTz = DateTime.now().setZone(tz);
+    const target = nowTz.minus({ days: 1 });
+    const dateKey = dateKeyFromDate(target);
+    await scorePredictionsForDate(dateKey, tz);
+  }
+);
+
 
 // Callable to score an arbitrary dateKey (admin only)
 export const scorePredictionsForDateCallable = onCall(async (req) => {
   const auth = (req as any).auth;
   if (!auth) {
-    // v2 onCall handlers should throw the same HttpsError shape for the client
-    throw new (functions as any).https.HttpsError('unauthenticated', 'Authentication required');
+    throw new HttpsError('unauthenticated', 'Authentication required');
   }
 
   const data = (req as any).data as any;
   const dateKey = (data && typeof data.dateKey === 'string') ? data.dateKey : '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Provide dateKey as YYYY-MM-DD');
+    throw new HttpsError('invalid-argument', 'Provide dateKey as YYYY-MM-DD');
   }
-  const tz = getTz();
+  const tz = 'America/New_York';
   return scorePredictionsForDate(dateKey, tz, { force: data?.force === true });
 });

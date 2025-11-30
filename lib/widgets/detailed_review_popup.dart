@@ -104,10 +104,18 @@ class _DetailedReviewPopupState extends State<DetailedReviewPopup> {
     final meal = data['meal'] ?? 'Unknown Meal';
     final rating = (data['rating'] ?? 0).toDouble();
     final reviewText = (data['reviewText'] ?? '').toString();
-    final mediaUrl = data['mediaUrl'] as String?;
-    final bool isVideo = mediaUrl != null && mediaUrl.toLowerCase().contains('.mp4');
-    if (mediaUrl != null) {
-      print("Loading mediaUrl: $mediaUrl");
+    // New schema fields
+    List<String> imageUrls = (data['imageUrls'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList();
+    String? videoUrl = data['videoUrl'] as String?;
+    // Legacy fallback (mediaUrl single) if new fields absent
+    final String? legacyMediaUrl = data['mediaUrl'] as String?;
+    if (imageUrls.isEmpty && legacyMediaUrl != null && legacyMediaUrl.isNotEmpty && !legacyMediaUrl.toLowerCase().endsWith('.mp4')) {
+      imageUrls = [legacyMediaUrl];
+    }
+    if (videoUrl == null && legacyMediaUrl != null && legacyMediaUrl.toLowerCase().endsWith('.mp4')) {
+      videoUrl = legacyMediaUrl;
     }
     final tags = (data['tags'] as List<dynamic>?)
             ?.map((tag) => tag.toString())
@@ -201,20 +209,45 @@ class _DetailedReviewPopupState extends State<DetailedReviewPopup> {
                 style: const TextStyle(fontSize: 14.0),
               ),
               const SizedBox(height: 12.0),
-
-              // --- Media row (image or video) ---
-              if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
+              // --- Media section: multiple images & optional video ---
+              if (imageUrls.isNotEmpty) ...[
+                SizedBox(
+                  height: 110,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: imageUrls.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final url = imageUrls[index];
+                      return GestureDetector(
+                        onTap: () => _openImage(url),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            url,
+                            width: 110,
+                            height: 110,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 110,
+                              height: 110,
+                              color: Colors.grey[300],
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.broken_image),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12.0),
+              ],
+              if (videoUrl != null && videoUrl.isNotEmpty) ...[
                 Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8.0),
-                    child: isVideo
-                        ? ReviewVideoPlayer(url: mediaUrl) // custom widget below
-                        : Image.network(
-                            mediaUrl,
-                            width: 250,
-                            height: 250,
-                            fit: BoxFit.cover,
-                          ),
+                    child: ReviewVideoPlayer(url: videoUrl),
                   ),
                 ),
                 const SizedBox(height: 12.0),
@@ -246,6 +279,32 @@ class _DetailedReviewPopupState extends State<DetailedReviewPopup> {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openImage(String url) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.black,
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: InteractiveViewer(
+            child: Center(
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.broken_image,
+                  color: Colors.white,
+                  size: 64,
+                ),
+              ),
+            ),
           ),
         ),
       ),
