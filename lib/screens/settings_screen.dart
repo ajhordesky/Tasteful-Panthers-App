@@ -1,57 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdh_recommendation/screens/login_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:pdh_recommendation/services/geofence_service.dart';
 import 'package:pdh_recommendation/services/notification_service.dart';
-import 'package:pdh_recommendation/services/permission_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
-// Update the _performFullLogout method in settings_screen.dart
-Future<void> _performFullLogout(BuildContext context) async {
-  try {
-    print('🚪 Starting logout process...');
-    
-    // 1. Stop geofence services first
-    final geofenceService = GeofenceService(
-      permissionService: PermissionService(),
-      notificationService: NotificationService(),
-      prefs: await SharedPreferences.getInstance(),
-    );
-    await geofenceService.stopAllServices(); // We'll add this method to GeofenceService
-    
-    // 2. Clear notification state and cancel all notifications
-    final notificationService = NotificationService();
-    await notificationService.cancelAllNotifications();
-    notificationService.clearPendingNotifications(); // We'll add this method
-    
-    // 3. Sign out from Firebase
-    await FirebaseAuth.instance.signOut();
-    
-    // 4. Clear local storage
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Logged out successfully')),
-    );
-    
-    // 5. Navigate to login screen and remove all previous routes
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => LoginPage()), // Replace with your actual login screen
-      (Route<dynamic> route) => false,
-    );
-    
-    print('✅ Logout completed successfully');
-  } catch (e) {
-    print('❌ Error during logout: $e');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Logout error: $e')),
-    );
+  // Helper method to get service from context
+  T? _getServiceIfAvailable<T>(BuildContext context) {
+    try {
+      return Provider.of<T>(context, listen: false);
+    } catch (e) {
+      print('ℹ️ Service $T not available: $e');
+      return null;
+    }
   }
-}
+
+  Future<void> _performFullLogout(BuildContext context) async {
+    try {
+      print('🚪 Starting logout process...');
+      
+      // 1. Get existing services from provider (NOT creating new ones!)
+      final geofenceService = _getServiceIfAvailable<GeofenceService>(context);
+      final notificationService = _getServiceIfAvailable<NotificationService>(context);
+      
+      // 2. Stop geofence services if available
+      if (geofenceService != null) {
+        print('🛑 Stopping all geofence services for logout...');
+        await geofenceService.stopAllServices();
+      }
+      
+      // 3. Clear notification state and cancel all notifications if available
+      if (notificationService != null) {
+        await notificationService.cancelAllNotifications();
+        notificationService.clearPendingNotifications();
+      }
+      
+      // 4. Sign out from Firebase
+      await FirebaseAuth.instance.signOut();
+      
+      // 5. Clear local storage
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logged out successfully')),
+      );
+      
+      // 6. Navigate to login screen and remove all previous routes
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (Route<dynamic> route) => false,
+      );
+      
+      print('✅ Logout completed successfully');
+    } catch (e) {
+      print('❌ Error during logout: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Logout error: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pdh_recommendation/staff_navigation_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pdh_recommendation/navigation_controller.dart';
 import 'package:pdh_recommendation/screens/signup_screen.dart';
@@ -153,14 +155,33 @@ class _LoginPageState extends State<LoginPage> {
         // Check if the widget is still mounted before navigation.
         if (!mounted) return;
         
-        print('✅ Login successful, navigating to app...');
+        print('✅ Login successful, checking user type...');
+        
+        // Check user type in Firestore
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .get();
+        
+        bool isStaff = false;
+        if (userDoc.exists) {
+          final data = userDoc.data() ?? {};
+          isStaff = (data['isStaff'] == true);
+          print('👮 User is staff: $isStaff');
+        }
         
         // Ensure navigation is set up one more time before navigating
         _ensureNavigationSetup();
         
+        print('🚀 Navigating to ${isStaff ? 'staff' : 'user'} system...');
+        
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => NavigationController()),
+          MaterialPageRoute(
+            builder: (context) => isStaff 
+                ? const StaffNavigationController() 
+                : const NavigationController(),
+          ),
         );
         
       } on FirebaseAuthException catch (e) {
@@ -189,22 +210,16 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  @override
-Widget build(BuildContext context) {
-  // Optional: Add a check to ensure no geofence services are running
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    // Ensure any residual geofence services are stopped
-    try {
-      final geofenceService = GeofenceService(
-        permissionService: PermissionService(),
-        notificationService: NotificationService(),
-        prefs: await SharedPreferences.getInstance(),
-      );
-      await geofenceService.stopAllServices();
-    } catch (e) {
-      // Silent fail - services might not be initialized
-    }
-  });
+  void _navigateToSignup() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => SignupPage()),
+    );
+  }
+
+ @override
+  Widget build(BuildContext context) {
+    // Optional: Add a check to ensure no geofence services are running
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -237,12 +252,13 @@ Widget build(BuildContext context) {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Email TextField with controller and validation.
+                  
+                  // Email TextField
                   TextFormField(
                     controller: _emailController,
                     textAlign: TextAlign.left,
                     decoration: InputDecoration(
-                      labelText: 'example@fit.edu',
+                      labelText: 'Email',
                       fillColor: Colors.white,
                       filled: true,
                       border: OutlineInputBorder(),
@@ -258,12 +274,13 @@ Widget build(BuildContext context) {
                     },
                   ),
                   const SizedBox(height: 10),
-                  // Password TextField with controller, obscured text and validation.
+                  
+                  // Password TextField
                   TextFormField(
                     controller: _passwordController,
                     textAlign: TextAlign.left,
                     decoration: InputDecoration(
-                      labelText: 'TRACKS Password',
+                      labelText: 'Password',
                       fillColor: Colors.white,
                       filled: true,
                       border: OutlineInputBorder(),
@@ -289,56 +306,40 @@ Widget build(BuildContext context) {
                       return null;
                     },
                   ),
+                  
                   const SizedBox(height: 20),
-                  // Row with two buttons: Create Account and Login.
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => SignupPage()),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.primary,
-                          backgroundColor: Theme.of(context).colorScheme.onPrimary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                        child: const Text(
-                          'Create Account',
-                          textAlign: TextAlign.center,
-                        ),
+                  
+                  // Login Button
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      backgroundColor: Theme.of(context).colorScheme.onPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _login,
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.primary,
-                          backgroundColor: Theme.of(context).colorScheme.onPrimary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                        child: _isLoading
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Theme.of(context).colorScheme.primary),
-                                ),
-                              )
-                            : Text('Login', textAlign: TextAlign.center),
-                      ),
-                    ],
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    ),
+                    child: _isLoading
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.primary),
+                            ),
+                          )
+                        : Text('Login', textAlign: TextAlign.center),
                   ),
-                  const SizedBox(height: 20),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Navigate to Signup
+                  TextButton(
+                    onPressed: _isLoading ? null : _navigateToSignup,
+                    child: Text('Need an account? Sign Up'),
+                  ),
                 ],
               ),
             ),

@@ -384,6 +384,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             );
           } else {
             // User is logged in - load user profile to determine if staff
+            print('👤 User logged in: ${user.uid}');
             return FutureBuilder<DocumentSnapshot>(
               future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
               builder: (context, userSnap) {
@@ -392,10 +393,22 @@ class _AuthWrapperState extends State<AuthWrapper> {
                 }
                 
                 bool isStaff = false;
+                
                 if (userSnap.hasData && userSnap.data!.exists) {
                   final data = userSnap.data!.data() as Map<String, dynamic>? ?? {};
+                  
+                  // Check for isStaff field
                   isStaff = (data['isStaff'] == true);
+                  
+                  print('🔍 Checking staff status for ${user.uid}');
+                  print('📊 User data: $data');
+                  print('👮 isStaff field value: ${data['isStaff']}');
+                  print('👮 isStaff boolean result: $isStaff');
+                } else {
+                  print('❌ User document not found for ${user.uid}');
                 }
+                
+                print(isStaff ? '✅ User is staff' : '👤 User is not staff');
                 
                 // Start geofencing for authenticated user
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -404,8 +417,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
                 
                 // Return appropriate navigation controller based on user role
                 if (isStaff) {
+                  print('🚀 Returning StaffNavigationController');
                   return const StaffNavigationController();
                 } else {
+                  print('🚀 Returning NavigationController');
                   return const NavigationController();
                 }
               },

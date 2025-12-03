@@ -25,14 +25,34 @@ class _NavigationControllerState extends State<NavigationController> {
     DashboardPage(),          // index 3
     ProfilePage(),            // index 4
   ];
+  
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
-    // Use initial index if provided, otherwise use the state from MyAppState
-    final appState = Provider.of<MyAppState>(context, listen: false);
-    if (widget.initialIndex != null) {
-      appState.setSelectedIndex(widget.initialIndex!);
+    // Don't call setState during initState
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Initialize after the widget is mounted and dependencies are resolved
+    if (!_initialized) {
+      _initialized = true;
+      
+      // Use initial index if provided, otherwise use the state from MyAppState
+      final appState = Provider.of<MyAppState>(context, listen: false);
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (widget.initialIndex != null) {
+          // Clamp the index to navigation bounds
+          final clampedIndex = widget.initialIndex!.clamp(0, _pages.length - 1);
+          appState.setSelectedIndex(clampedIndex);
+        }
+        // If no initialIndex is provided, keep whatever index is already set
+      });
     }
   }
 

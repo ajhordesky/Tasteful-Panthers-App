@@ -216,7 +216,7 @@ class _DetailedIssuePopupState extends State<DetailedIssuePopup> {
               const Text('Update status', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8.0),
               DropdownButtonFormField<String>(
-                value: _selectedStatus,
+                initialValue: _selectedStatus,
                 items: const [
                   DropdownMenuItem(value: 'open', child: Text('Open')),
                   DropdownMenuItem(value: 'in_progress', child: Text('In progress')),
